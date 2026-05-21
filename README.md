@@ -16,7 +16,7 @@ When a shell is detected but not active, the extension sets a footer status and 
 From git:
 
 ```sh
-pi install git:github.com:ohare93/pi-shell-reminder
+pi install git:github.com:jeprecated/pi-shell-reminder
 ```
 
 For local development:
