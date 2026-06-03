@@ -71,6 +71,46 @@ function shortPath(path: string): string {
 	return resolved;
 }
 
+function flakeUsesDevenv(contents: string): boolean {
+	return (
+		/\bdevenv\.lib\.mkShell\b/.test(contents) ||
+		/\b(?:inputs\.)?devenv\.flakeModule\b/.test(contents) ||
+		/\bdevenv\.shells\b/.test(contents)
+	);
+}
+
+async function maybeDevenvShell(root: string): Promise<LocalShell | undefined> {
+	const devenvNix = join(root, "devenv.nix");
+	const devenvYaml = join(root, "devenv.yaml");
+	if ((await exists(devenvNix)) || (await exists(devenvYaml))) {
+		return {
+			kind: "devenv",
+			name: "devenv",
+			root,
+			configPath: (await exists(devenvNix)) ? devenvNix : devenvYaml,
+			command: "devenv shell",
+			priority: 20,
+		};
+	}
+
+	const flakeNix = join(root, "flake.nix");
+	if (await exists(flakeNix)) {
+		const contents = await readFile(flakeNix, "utf8").catch(() => "");
+		if (flakeUsesDevenv(contents)) {
+			return {
+				kind: "devenv",
+				name: "devenv",
+				root,
+				configPath: flakeNix,
+				command: "nix develop --no-pure-eval",
+				priority: 20,
+			};
+		}
+	}
+
+	return undefined;
+}
+
 async function maybeNixShell(root: string): Promise<LocalShell | undefined> {
 	const shellNix = join(root, "shell.nix");
 	if (await exists(shellNix)) {
@@ -87,7 +127,7 @@ async function maybeNixShell(root: string): Promise<LocalShell | undefined> {
 	const flakeNix = join(root, "flake.nix");
 	if (await exists(flakeNix)) {
 		const contents = await readFile(flakeNix, "utf8").catch(() => "");
-		if (/\bdevShells?\b|\bmkShell\b/.test(contents)) {
+		if (!flakeUsesDevenv(contents) && /\bdevShells?\b|\bmkShell\b/.test(contents)) {
 			return {
 				kind: "nix",
 				name: "Nix dev shell",
@@ -131,18 +171,8 @@ async function shellsInDirectory(root: string): Promise<LocalShell[]> {
 		});
 	}
 
-	const devenvNix = join(root, "devenv.nix");
-	const devenvYaml = join(root, "devenv.yaml");
-	if ((await exists(devenvNix)) || (await exists(devenvYaml))) {
-		shells.push({
-			kind: "devenv",
-			name: "devenv",
-			root,
-			configPath: (await exists(devenvNix)) ? devenvNix : devenvYaml,
-			command: "devenv shell",
-			priority: 20,
-		});
-	}
+	const devenvShell = await maybeDevenvShell(root);
+	if (devenvShell) shells.push(devenvShell);
 
 	const nixShell = await maybeNixShell(root);
 	if (nixShell) shells.push(nixShell);
@@ -178,8 +208,16 @@ function devboxIsActive(shell: LocalShell): boolean {
 	return envPathMatchesRoot(process.env.DEVBOX_PROJECT_ROOT ?? process.env.DEVBOX_DIR, shell.root);
 }
 
+function devenvRootCandidatesFromEnv(): string[] {
+	const candidates: string[] = [];
+	if (process.env.DEVENV_ROOT !== undefined) candidates.push(process.env.DEVENV_ROOT);
+	if (process.env.DEVENV_DOTFILE !== undefined) candidates.push(dirname(process.env.DEVENV_DOTFILE));
+	if (process.env.DEVENV_STATE !== undefined) candidates.push(dirname(dirname(process.env.DEVENV_STATE)));
+	return candidates;
+}
+
 function devenvIsActive(shell: LocalShell): boolean {
-	return envPathMatchesRoot(process.env.DEVENV_ROOT, shell.root) && (process.env.DEVENV_ROOT !== undefined || process.env.DEVENV_PROFILE !== undefined);
+	return devenvRootCandidatesFromEnv().some((candidate) => envPathMatchesRoot(candidate, shell.root));
 }
 
 function nixShellIsActive(shell: LocalShell): boolean {
@@ -283,6 +321,8 @@ export const __test__ = {
 	ancestors,
 	devboxIsActive,
 	devenvIsActive,
+	devenvRootCandidatesFromEnv,
+	flakeUsesDevenv,
 	direnvIsActive,
 	envPathMatchesRoot,
 	evaluateLocalShell,

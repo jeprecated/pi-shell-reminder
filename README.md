@@ -5,8 +5,8 @@ A small [Pi](https://pi.dev/) extension that reminds you when Pi was started out
 It detects common project-local shells while walking upward from the current working directory:
 
 - [Devbox](https://www.jetify.com/devbox/) via `devbox.json`
-- [devenv](https://devenv.sh/) via `devenv.nix` or `devenv.yaml`
-- Nix shells via `shell.nix`, `flake.nix` dev shells, or `default.nix` with `mkShell`
+- [devenv](https://devenv.sh/) via `devenv.nix`, `devenv.yaml`, or a `flake.nix` using devenv
+- Nix shells via `shell.nix`, non-devenv `flake.nix` dev shells, or `default.nix` with `mkShell`
 - [direnv](https://direnv.net/) via `.envrc`
 
 When a shell is detected but not active, the extension sets a footer status and shows a startup warning with the command to run.
@@ -64,6 +64,8 @@ If multiple shell systems are detected in the same directory, the extension pref
 2. devenv
 3. Nix dev shell
 4. direnv
+
+For devenv projects configured directly in `flake.nix`, the warning suggests `nix develop --no-pure-eval`.
 
 Alternative shell commands from the same directory are included in the warning.
 
